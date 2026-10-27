@@ -1,7 +1,8 @@
 name: Task Scheduler
 # requires: kkdepp_lib
 description: Schedule library scans with pre / post scripts, an optional Identify step, run history and instant file preview.
-version: 1.9.1
+version: 1.9.2
+url: https://github.com/kkdepp/stash-plugins/tree/main/plugins/task_scheduler
 exec:
   - python3
   - "{pluginDir}/task_scheduler.py"

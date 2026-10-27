@@ -3,6 +3,11 @@
 All notable changes to this plugin. Versions follow SemVer and match the `version` field of
 `task_scheduler.yml` and the git tag `task_scheduler-vX.Y.Z`.
 
+## 1.9.2 — 2026-10-27
+
+### Changed
+- Settings > Plugins links to the plugin's page (README and changelog).
+
 ## 1.9.1 — 2026-10-27
 
 ### Changed
