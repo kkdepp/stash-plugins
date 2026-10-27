@@ -1,0 +1,12 @@
+name: kkdepp_lib
+# Library plugin: no task, no setting. Plugins that use it declare, in their own manifest:
+#   # requires: kkdepp_lib        (read by the source index build: Stash installs it with them)
+#   ui:
+#     requires:
+#       - kkdepp_lib              (Stash loads this plugin's JavaScript first)
+# Python code (py/) is imported by those plugins from this folder, found next to their own.
+description: Shared code for the kkdepp plugins (preview player, temporary file links). Installed with the plugins that need it.
+version: 1.0.0
+ui:
+  javascript:
+    - media-player.js
