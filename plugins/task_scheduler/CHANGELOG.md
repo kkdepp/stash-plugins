@@ -3,6 +3,33 @@
 All notable changes to this plugin. Versions follow SemVer and match the `version` field of
 `task_scheduler.yml` and the git tag `task_scheduler-vX.Y.Z`.
 
+## 1.10.1 — 2026-10-27
+
+### Changed
+- README rewritten as a how-to: quick start, installation (with how to install `stashapp-tools`), scheduling
+  (entrypoint and healthcheck examples to re-arm cron at container start), creating a task, following runs,
+  preview, and a troubleshooting table.
+
+## 1.10.0 — 2026-10-27
+
+### Added
+- **External trigger**: the scheduler pass can be run through Stash's API (plugin operation `tick`), once a
+  minute from host cron, a systemd timer, Windows Task Scheduler… Scheduling then works on any install, without
+  `crond` in the Stash container (README, "Scheduling", option 2).
+
+### Changed
+- After a container restart, cron is re-armed at the first visit to **any** Stash page, not only the Task
+  Scheduler page.
+- The scheduler status shows what runs it (cron or external trigger) and the time of the last pass, and says
+  so when the container has no cron daemon.
+- README: new section **Scheduling**: how scheduled runs work, why cron does not survive a container restart,
+  the command to arm it at each container start (`task_scheduler.py --ensure-cron`), and the external trigger.
+
+### Fixed
+- In a container without a cron daemon, the open Task Scheduler page wrote `/etc/crontabs/root` and logged
+  "crond not found" every minute. It now writes nothing there, and repair attempts are logged only when their
+  outcome changes.
+
 ## 1.9.2 — 2026-10-27
 
 ### Changed

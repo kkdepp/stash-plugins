@@ -1108,24 +1108,50 @@ class plugin_lock(object):
         finally:
             self.f.close()
 
-def touch_heartbeat():
-    """Record that a cron pass just ran."""
+NO_CROND_MSG = "no crond in this container: scheduled runs need an external trigger (see the README)"
+
+def touch_heartbeat(source="cron"):
+    """Record that a scheduler pass just ran, and what ran it: "cron" (--tick) or
+    "external" (the tick action, called through Stash's API)."""
     try:
         with open(HEARTBEAT_FILE, "w") as f:
-            json.dump({"t": time.time()}, f)
+            json.dump({"t": time.time(), "source": source}, f)
     except Exception:
         pass
 
-def scheduler_status():
-    """'cron' if a cron pass ran recently, else None."""
+def _read_heartbeat():
     try:
         with open(HEARTBEAT_FILE) as f:
             hb = json.load(f)
+        return hb if isinstance(hb, dict) else {}
+    except Exception:
+        return {}
+
+def scheduler_status():
+    """Source of the last scheduler pass ("cron" or "external") if it ran recently, else None."""
+    hb = _read_heartbeat()
+    try:
         if time.time() - float(hb.get("t", 0)) < HEARTBEAT_MAX_AGE:
-            return "cron"
+            return hb.get("source") or "cron"
     except Exception:
         pass
     return None
+
+def _crond_binary():
+    return shutil.which("crond") or shutil.which("cron")
+
+def scheduler_info():
+    """What the page shows about the scheduler: running source, last pass, crond available."""
+    hb = _read_heartbeat()
+    last = None
+    try:
+        if hb.get("t"):
+            last = _iso(datetime.datetime.fromtimestamp(float(hb["t"])).astimezone())
+    except Exception:
+        pass
+    return {"status": scheduler_status(), "last_pass": last,
+            "last_source": hb.get("source") or ("cron" if last else None),
+            "crond": _crond_binary() is not None}
 
 def _crond_running():
     """Is a cron daemon process running? (scans /proc, no pgrep needed)"""
@@ -1157,7 +1183,11 @@ def _cron_line():
 
 def ensure_cron():
     """Make sure the crontab entry exists and crond is running (idempotent).
-    Returns a short message describing what was done or what went wrong."""
+    Returns a short message describing what was done or what went wrong. Writes nothing
+    when the container has no cron daemon."""
+    exe = _crond_binary()
+    if not exe:
+        return NO_CROND_MSG
     done = []
     try:
         line = _cron_line()
@@ -1174,9 +1204,6 @@ def ensure_cron():
     except Exception as e:
         return f"could not write {CRONTAB_FILE}: {e}"
     if not _crond_running():
-        exe = shutil.which("crond") or shutil.which("cron")
-        if not exe:
-            return "crond not found in this container"
         try:
             subprocess.Popen([exe, "-b", "-l", "8"] if exe.endswith("crond") else [exe],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -1187,20 +1214,29 @@ def ensure_cron():
     return ", ".join(done) or "already set up"
 
 def repair_cron_if_needed():
-    """Called when the UI sees no recent cron pass: try to fix it, at most once a minute."""
+    """Called when no scheduler pass ran recently: bring cron back, at most once a minute.
+    Without a cron daemon there is nothing to repair (an external trigger is needed). Logs
+    only when the outcome differs from the previous attempt, not at every attempt."""
+    if _crond_binary() is None:
+        return NO_CROND_MSG
+    prev = {}
     try:
         with open(CRON_ATTEMPT_FILE) as f:
-            if time.time() - float(f.read().strip() or 0) < CRON_RETRY_DELAY:
-                return None
+            prev = json.load(f)
+        if not isinstance(prev, dict):          # 1.9.x wrote a bare timestamp
+            prev = {"t": float(prev)}
     except Exception:
-        pass
+        prev = {}
+    if time.time() - float(prev.get("t") or 0) < CRON_RETRY_DELAY:
+        return prev.get("msg")
+    msg = ensure_cron()
     try:
         with open(CRON_ATTEMPT_FILE, "w") as f:
-            f.write(str(time.time()))
+            json.dump({"t": time.time(), "msg": msg}, f)
     except Exception:
         pass
-    msg = ensure_cron()
-    log.info(f"[TaskScheduler] Cron repair: {msg}")
+    if msg != prev.get("msg"):
+        log.info(f"[TaskScheduler] Cron repair: {msg}")
     return msg
 
 LAST_CHECK_FILE = os.path.join(PLUGIN_DIR, ".last_check")
@@ -1459,6 +1495,7 @@ def _read_script_defaults():
 
 SIZE_BUDGET = 30            # seconds spent measuring one selected item
 NO_LOCK_ACTIONS = {"listdir", "getmtimes", "sizes",   # touch no plugin state
+                   "status",                           # heartbeat read + cron repair (own retry file)
                    "media_link", "media_ping", "media_unlink"}   # their own lock (media_links.py)
 
 def measure_size(path, budget=SIZE_BUDGET):
@@ -1572,8 +1609,27 @@ def handle_action(action, args, stash):
             nr = next_run(t, now, global_on)
             view.append(dict(t, next_run=_iso(nr) if nr else None))
         return {"tasks": view, "global_enabled": global_on, "scheduler": status, "scheduler_note": note,
+                "scheduler_info": scheduler_info(),
                 "script_defaults": _read_script_defaults(),
                 "server_time": {"now": _iso(now), "tz": now.tzname(), "offset": now.strftime("%z")}}
+
+    elif action == "status":
+        # Cheap check made from any Stash page (not only this plugin's): re-arms cron as soon
+        # as someone uses Stash after a container restart
+        info = scheduler_info()
+        if info["status"] is None:
+            info["note"] = repair_cron_if_needed()
+        return info
+
+    elif action == "tick":
+        # One scheduler pass on demand, for an external trigger (host cron, systemd timer,
+        # Windows Task Scheduler...) calling runPluginOperation(args: {action: "tick"}) once a
+        # minute. Runs under the plugin lock, with Stash's own connection (no API key read here).
+        if stash is None:
+            return {"error": "Stash is not reachable"}
+        busy = tick_once(stash)
+        touch_heartbeat("external")
+        return {"busy": busy}
 
     elif action == "getlog":
         # Output of the last pre/post script run of a task (for the tooltip in the list)
@@ -1842,7 +1898,7 @@ def handle_action(action, args, stash):
             return {"error": str(e)}
 
     elif action == "getmtimes":
-        # Retourne les mtime d'une liste de chemins
+        # Modification times of a list of paths
         import os as _os
         paths = args.get("paths", [])
         mtimes = {}

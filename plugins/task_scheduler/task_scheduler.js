@@ -235,6 +235,7 @@
       state.globalEnabled = res.global_enabled !== false;
       state.scheduler = res.scheduler === undefined ? undefined : res.scheduler;
       if (res.scheduler_note) state.schedulerNote = res.scheduler_note;
+      if (res.scheduler_info) state.schedulerInfo = res.scheduler_info;
       if (res.script_defaults) state.scriptDefaults = res.script_defaults;
       renderTable();
       renderGlobalToggle();
@@ -1678,13 +1679,26 @@
     lbl.textContent = state.globalEnabled ? 'Enabled' : 'Disabled';
     var dm = document.getElementById('ts-daemon');
     if (dm) {
-      var sch = state.scheduler;
+      var sch = state.scheduler, info = state.schedulerInfo || {};
+      var last = info.last_pass ? ' Last pass: ' + fmtDate(info.last_pass) + '.' : ' No pass recorded yet.';
       dm.className = 'ts-daemon' + (sch ? ' on' : '');
-      dm.textContent = sch === undefined ? '' : (sch ? '\u25CF Scheduler running' : '\u25CB Scheduler stopped');
-      dm.title = sch
-        ? 'Cron is running the scheduler: scheduled tasks fire and the queue advances without this page.'
-        : 'Cron has not run recently; the plugin is trying to restart it.' +
-          (state.schedulerNote ? ' Last attempt: ' + state.schedulerNote : '');
+      if (sch === undefined) {
+        dm.textContent = '';
+      } else if (sch) {
+        dm.textContent = '\u25CF Scheduler running' + (sch === 'external' ? ' (external trigger)' : ' (cron)');
+        dm.title = (sch === 'external'
+          ? 'An external trigger calls the scheduler through Stash\u2019s API.'
+          : 'Cron in the Stash container runs the scheduler.') +
+          ' Scheduled tasks fire and the queue advances without this page.' + last;
+      } else if (info.crond === false) {
+        dm.textContent = '\u25CB Scheduler not set up';
+        dm.title = 'No cron daemon in this container: scheduled tasks need an external trigger calling ' +
+          'Stash once a minute (see the plugin README, "Scheduling").' + last;
+      } else {
+        dm.textContent = '\u25CB Scheduler stopped';
+        dm.title = 'No scheduler pass recently; the plugin is restarting cron (scheduled starts in between ' +
+          'are marked Missed).' + last + (state.schedulerNote ? ' Last attempt: ' + state.schedulerNote : '');
+      }
     }
   }
 
@@ -2979,7 +2993,22 @@
     if (w) w.remove();
   }
 
+  // Any Stash page: ask the backend to check the scheduler (it re-arms cron when no pass ran
+  // recently), so a container restart is repaired by the first visit to Stash, not only by a
+  // visit to this plugin's page. At most once a minute; the plugin's own page does it on refresh.
+  var SCHEDULER_CHECK_MS = 60000;
+  var _lastSchedulerCheck = 0;
+
+  function checkScheduler() {
+    if (window.location.pathname === PAGE_ROUTE) return;
+    var now = Date.now();
+    if (now - _lastSchedulerCheck < SCHEDULER_CHECK_MS) return;
+    _lastSchedulerCheck = now;
+    callApi({ action: 'status' });     // result unused here; callApi never rejects
+  }
+
   function onLocation() {
+    checkScheduler();
     if (isToolsPage()) {
       if (!document.getElementById('ts-btn-wrapper')) {
         var attempts = 0;
