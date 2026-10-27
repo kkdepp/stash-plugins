@@ -1,0 +1,30 @@
+name: Task Scheduler
+# requires: kkdepp_lib
+description: Schedule library scans with pre / post scripts, an optional Identify step, run history and instant file preview.
+version: 1.9.1
+exec:
+  - python3
+  - "{pluginDir}/task_scheduler.py"
+interface: raw
+ui:
+  # The preview player comes from the kkdepp_lib library plugin (loaded first); the
+  # "# requires:" line above makes a plugin source install it with this plugin.
+  requires:
+    - kkdepp_lib
+  javascript:
+    - task_scheduler.js
+  # Preview player: temporary links to single files, served behind Stash's login.
+  # The key needs its leading slash (Stash matches it against "/media/<name>"); never map "/":
+  # it would serve the plugin's own state files.
+  assets:
+    "/media": media
+settings:
+  historyDays:
+    displayName: History retention (days)
+    description: "Number of days of run history kept for each task (empty or 0 = 7)."
+    type: NUMBER
+tasks:
+  - name: api
+    description: Task Scheduler API
+    defaultArgs:
+      mode: api
