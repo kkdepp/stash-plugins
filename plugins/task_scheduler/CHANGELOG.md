@@ -3,6 +3,15 @@
 All notable changes to this plugin. Versions follow SemVer and match the `version` field of
 `task_scheduler.yml` and the git tag `task_scheduler-vX.Y.Z`.
 
+## 1.11.0 — 2026-10-27
+
+### Changed
+- **No more `stashapp-tools` dependency**: the plugin talks to Stash through the client of **kkdepp_lib 1.1.0**
+  (Python standard library only). Update kkdepp_lib first; with an older or missing kkdepp_lib, the page shows
+  what to install instead of failing.
+- Errors of the plugin's own requests to Stash are no longer logged as separate Stash errors (so they are not
+  counted among a run's "Stash errors" either); the plugin logs them in its own messages.
+
 ## 1.10.1 — 2026-10-27
 
 ### Changed

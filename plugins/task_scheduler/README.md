@@ -29,10 +29,9 @@ Install **Task Scheduler**: its library, **kkdepp_lib**, is installed with it.
 
 **Requirements**
 
-- Stash v0.31.x able to run Python plugins: `python3` with the `stashapp-tools` package (`stashapi`). If it is
-  missing, install it with `pip install stashapp-tools` in the Stash container, or with the community plugin
-  "Python Tools Installer" (Settings > Plugins > Available Plugins, CommunityScripts source).
-- **kkdepp_lib** next to this plugin. Without it everything works except the preview, which says what is missing.
+- Stash v0.31.x able to run Python plugins: `python3` (standard library only, no pip package needed).
+- **kkdepp_lib 1.1.0 or later** next to this plugin: it provides the Stash client and the preview. Without it,
+  the plugin's page says what to install.
 - For scheduled runs: something that runs the scheduler every minute, see the next section. Manual runs work
   without it.
 
@@ -156,7 +155,7 @@ decode show a message instead.
 | **○ Scheduler not set up** | The container has no cron daemon: use [option 2](#option-2-external-trigger-any-install-bare-metal-other-images). |
 | A task shows **Missed** | Its start time passed while no scheduler pass ran, or while its previous run was still active (the reason is shown with it). It runs again at its next scheduled time. |
 | **In stash** shows **?** | Stash could not be asked; hover it for the error. |
-| ▶ says the preview needs **kkdepp_lib** | Install and enable kkdepp_lib next to this plugin, then reload the page. |
+| The page or ▶ says it needs **kkdepp_lib** (or a newer one) | Install or update kkdepp_lib next to this plugin (1.1.0 or later), enable it, then reload the page. |
 | A script failed | Hover the script status on the task row for its output, or open the run's Timeline in the History. |
 | Anything else | Stash's log (Settings > Logs; lines start with `[TaskScheduler]`), and `/tmp/ts-tick.log` in the container for cron passes. |
 

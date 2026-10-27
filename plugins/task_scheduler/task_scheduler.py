@@ -25,21 +25,57 @@ import datetime
 PLUGIN_DIR = os.path.dirname(os.path.realpath(__file__))
 TASKS_FILE = os.path.join(PLUGIN_DIR, "tasks.json")
 
+# ── Library plugin (kkdepp_lib) ─────────────────────────────────────────────
+#
+# Shared code (Stash client and logger, preview links) comes from the kkdepp_lib plugin, installed
+# next to this plugin's folder (plugins installed from one source share a parent folder). Modules
+# are loaded from their file path, so an older copy left in this folder by a previous version is
+# never picked up and sys.path is left alone; each one's API_VERSION is checked.
+
+LIB_ID = "kkdepp_lib"
+STASH_API_NEEDED = 1          # stash_client.API_VERSION this plugin needs
+MEDIA_API_NEEDED = 1          # media_links.API_VERSION this plugin needs
+_lib_modules = {}
+
+class LibraryMissing(Exception):
+    """The library plugin is missing or too old (message is shown to the user)."""
+
+def lib_module(name, api_needed):
+    path = os.path.join(os.path.dirname(PLUGIN_DIR), LIB_ID, "py", name + ".py")
+    if not os.path.isfile(path):
+        raise LibraryMissing(f"Task Scheduler needs the {LIB_ID} plugin (1.1.0 or later), installed next to it")
+    mod = _lib_modules.get(path)
+    if mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f"{LIB_ID}_{name}", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _lib_modules[path] = mod
+    if getattr(mod, "API_VERSION", 0) < api_needed:
+        raise LibraryMissing(f"Task Scheduler needs a newer version of the {LIB_ID} plugin: update it")
+    return mod
+
 try:
-    import stashapi.log as log
-    from stashapi.stashapp import StashInterface
-except ImportError:
-    # Stub for tests outside Stash
-    class _Log:
-        def info(self, m):  print("[INFO]", m, file=sys.stderr)
-        def warning(self, m): print("[WARNING]", m, file=sys.stderr)
-        def error(self, m): print("[ERROR]", m, file=sys.stderr)
-        def debug(self, m): print("[DEBUG]", m, file=sys.stderr)
+    _stash_client = lib_module("stash_client", STASH_API_NEEDED)
+    log = _stash_client.log
+    StashInterface = _stash_client.StashClient
+    LIB_ERROR = None
+except Exception as e:
+    LIB_ERROR = str(e) if isinstance(e, LibraryMissing) else f"could not load the {LIB_ID} plugin: {e}"
+
+    class _Log(object):
+        """Stash's plugin log format, until the library is installed."""
+        def _w(self, lvl, m):
+            sys.stderr.write(f"\x01{lvl}\x02{m}\n")
+        def debug(self, m):   self._w("d", m)
+        def info(self, m):    self._w("i", m)
+        def warning(self, m): self._w("w", m)
+        def error(self, m):   self._w("e", m)
     log = _Log()
-    class StashInterface:
-        def __init__(self, ctx): pass
-        def run_plugin_task(self, *a, **kw): pass
-        def metadata_scan(self, paths, flags): return None
+
+    class StashInterface(object):
+        def __init__(self, conn=None):
+            raise LibraryMissing(LIB_ERROR)
 
 # ── Persistance ─────────────────────────────────────────────────────────────
 
@@ -1551,34 +1587,10 @@ def _clean_sizes(v, paths):
 # Stash serves it behind its own login, as is (no transcoding): the preview is instant, for
 # browser-playable formats only.
 #
-# The library sits next to this plugin's folder (plugins installed from one source share a
-# parent folder). It is loaded from its file path, so an older copy of media_links.py left in
-# this folder by a previous version is never picked up, and sys.path is left alone.
-
-LIB_ID = "kkdepp_lib"
-MEDIA_API_NEEDED = 1          # media_links.API_VERSION this plugin needs
-_media_modules = {}
-
-class PreviewUnavailable(Exception):
-    """The library plugin is missing or too old (message is shown to the user)."""
-
-def _media_links():
-    path = os.path.join(os.path.dirname(PLUGIN_DIR), LIB_ID, "py", "media_links.py")
-    if not os.path.isfile(path):
-        raise PreviewUnavailable(f"the preview needs the {LIB_ID} plugin, installed next to Task Scheduler")
-    mod = _media_modules.get(path)
-    if mod is None:
-        import importlib.util       # imported on use: the rest of the plugin works without the library
-        spec = importlib.util.spec_from_file_location("kkdepp_lib_media_links", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        _media_modules[path] = mod
-    if getattr(mod, "API_VERSION", 0) < MEDIA_API_NEEDED:
-        raise PreviewUnavailable(f"the preview needs a newer version of the {LIB_ID} plugin: update it")
-    return mod
+# Loaded on use from the kkdepp_lib plugin (lib_module, at the top of this file).
 
 def _media():
-    return _media_links().MediaLinks(PLUGIN_DIR)
+    return lib_module("media_links", MEDIA_API_NEEDED).MediaLinks(PLUGIN_DIR)
 
 def library_roots(stash):
     q = stash.call_GQL("query { configuration { general { stashes { path } } } }") or {}
@@ -1879,7 +1891,7 @@ def handle_action(action, args, stash):
             name = _media().create(args.get("path"), library_roots(stash))
             return {"name": name}
         except Exception as e:
-            known = isinstance(e, PreviewUnavailable) or type(e).__name__ == "MediaLinkError"
+            known = isinstance(e, LibraryMissing) or type(e).__name__ == "MediaLinkError"
             if not known:
                 log.error(f"[TaskScheduler] Could not prepare the preview: {e}")
             return {"error": str(e) if known else f"could not prepare the preview: {e}"}
@@ -1941,10 +1953,16 @@ def main():
             pass
     action = args.get("action", "list")
 
+    if LIB_ERROR:
+        # Shown by the page's error bar: nothing works without the Stash client
+        log.error(f"[TaskScheduler] {LIB_ERROR}")
+        print(json.dumps({"output": {"error": LIB_ERROR}}))
+        return
+
     try:
         stash = StashInterface(server_connection)
     except Exception as e:
-        log.error(f"StashInterface: {e}")
+        log.error(f"[TaskScheduler] Stash connection: {e}")
         stash = None
 
     if action in NO_LOCK_ACTIONS:
