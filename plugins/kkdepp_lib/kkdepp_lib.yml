@@ -5,8 +5,8 @@ name: kkdepp_lib
 #     requires:
 #       - kkdepp_lib              (Stash loads this plugin's JavaScript first)
 # Python code (py/) is imported by those plugins from this folder, found next to their own.
-description: Shared code for the kkdepp plugins (preview player, temporary file links). Installed with the plugins that need it.
-version: 1.0.1
+description: Shared code for the kkdepp plugins (Stash client, preview player, temporary file links). Installed with the plugins that need it.
+version: 1.1.0
 url: https://github.com/kkdepp/stash-plugins/tree/main/plugins/kkdepp_lib
 ui:
   javascript:
