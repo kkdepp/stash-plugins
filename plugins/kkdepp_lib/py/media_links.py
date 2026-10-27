@@ -1,12 +1,14 @@
 """Temporary links that let the browser play a file through Stash's plugin assets route.
 
-Part of the kkdepp_lib library plugin. A plugin imports it from the library's py/ folder, found
-next to its own folder (plugins installed from one source sit side by side), put first on
-sys.path so that no older local copy wins, then checks API_VERSION:
+Part of the kkdepp_lib library plugin. A plugin loads it by file path from the library's py/
+folder, found next to its own folder (plugins installed from one source sit side by side), so
+that an older copy left in its own folder is never picked up and sys.path is left alone; then it
+checks API_VERSION:
 
-    lib = os.path.join(os.path.dirname(PLUGIN_DIR), "kkdepp_lib", "py")
-    sys.path.insert(0, lib)
-    import media_links
+    path = os.path.join(os.path.dirname(PLUGIN_DIR), "kkdepp_lib", "py", "media_links.py")
+    spec = importlib.util.spec_from_file_location("kkdepp_lib_media_links", path)
+    media_links = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(media_links)
     if media_links.API_VERSION < NEEDED: ...      # ask for a kkdepp_lib update
 
 API_VERSION grows by one with each backward-compatible addition; a breaking change needs a new

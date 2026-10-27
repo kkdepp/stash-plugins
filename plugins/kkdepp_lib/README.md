@@ -27,8 +27,8 @@ ui:
 ```
 
 The `# requires:` comment lets the source index install the library with the plugin; `ui.requires` makes Stash
-load the library's JavaScript first. Python code imports from `../kkdepp_lib/py` (see the top of
-`py/media_links.py`) and checks `API_VERSION`.
+load the library's JavaScript first. Python code loads modules by file path from `../kkdepp_lib/py` (see the
+top of `py/media_links.py`) and checks `API_VERSION`.
 
 ## Manual installation
 

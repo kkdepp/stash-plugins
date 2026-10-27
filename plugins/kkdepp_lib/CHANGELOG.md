@@ -3,6 +3,13 @@
 All notable changes to this plugin. Versions follow SemVer and match the `version` field of `kkdepp_lib.yml`
 and the git tag `kkdepp_lib-vX.Y.Z`.
 
+## 1.0.1 — 2026-10-27
+
+### Changed
+- Settings > Plugins links to the plugin's page (README and changelog).
+- For plugin authors: the documented way to load the Python modules is now by file path (as Task Scheduler
+  1.9.0 does), not through `sys.path`.
+
 ## 1.0.0 — 2026-10-27
 
 ### Added
